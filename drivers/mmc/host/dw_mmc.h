@@ -132,6 +132,7 @@ struct dw_mci_dma_slave {
  * @clk_old: The last clock value that was requested from core.
  * @pdev: platform_device registered
  * @rstc: Reset controller for this host.
+ * @detect_delay_ms: Delay in mS before detecting cards after interrupt.
  *
  * Locking
  * =======
@@ -253,6 +254,7 @@ struct dw_mci {
 	unsigned int		clk_old;
 	struct platform_device	*pdev;
 	struct reset_control *rstc;
+	u32 detect_delay_ms;
 };
 
 /* DMA ops for Internal/External DMAC interface */
@@ -273,9 +275,6 @@ struct dw_mci_board {
 	unsigned int bus_hz; /* Clock speed at the cclk_in pad */
 
 	u32 caps;	/* Capabilities */
-
-	/* delay in mS before detecting cards after interrupt */
-	u32 detect_delay_ms;
 
 	struct dma_pdata *data;
 };
