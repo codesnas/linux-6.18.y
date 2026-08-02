@@ -438,6 +438,17 @@ config BT_MTKSDIO
 	  Say Y here to compile support for MediaTek Bluetooth SDIO devices
 	  into the kernel or say M to compile it as module (btmtksdio).
 
+config BT_MTK7668
+	tristate "MediaTek MT7668 Bluetooth driver (vendor)"
+	depends on MMC
+	default BT_MTKSDIO
+	help
+	  MediaTek vendor Bluetooth driver for the MT7668/MT6632 SDIO
+	  combo chip, ported from the MediaTek reference driver.
+	  Replaces the mainline btmtksdio driver for this chip.
+
+	  Say M to compile it as module (bt_mt7668).
+
 config BT_MTKUART
 	tristate "MediaTek HCI UART driver"
 	depends on BT_HCIUART
