@@ -211,6 +211,7 @@ struct rockchip_combphy_priv {
 	const struct rockchip_combphy_cfg *cfg;
 	bool enable_ssc;
 	bool ext_refclk;
+	bool pcie_vendor_trim;
 	struct clk *refclk;
 };
 
@@ -374,6 +375,8 @@ static int rockchip_combphy_parse_dt(struct device *dev, struct rockchip_combphy
 	priv->enable_ssc = device_property_present(dev, "rockchip,enable-ssc");
 
 	priv->ext_refclk = device_property_present(dev, "rockchip,ext-refclk");
+
+	priv->pcie_vendor_trim = device_property_present(dev, "rockchip,pcie-vendor-trim");
 
 	priv->phy_rst = devm_reset_control_get_exclusive(dev, "phy");
 	/* fallback to old behaviour */
@@ -1319,14 +1322,32 @@ static int rk3588_combphy_cfg(struct rockchip_combphy_priv *priv)
 			rockchip_combphy_updatel(priv, RK3568_PHYREG33_PLL_KVCO_MASK,
 						 val, RK3568_PHYREG33);
 
-			/* Enable controlling random jitter. */
-			writel(RK3568_PHYREG12_PLL_LPF_ADJ_VALUE, priv->mmio + RK3568_PHYREG12);
-
 			/* Set up rx_trim: PLL LPF C1 85pf R1 1.25kohm */
 			writel(RK3588_PHYREG27_RX_TRIM, priv->mmio + RK3588_PHYREG27);
 
-			/* Set up su_trim:  */
-			writel(RK3568_PHYREG11_SU_TRIM_0_7, priv->mmio + RK3568_PHYREG11);
+			if (priv->pcie_vendor_trim) {
+				/*
+				 * Full su_trim sequence from the vendor BSP
+				 * ("T3_P1 650mV"), for boards whose endpoints
+				 * fail to train with the mainline defaults.
+				 * Includes the CKRCV/CKDRV reference-clock
+				 * amplifier trims that mainline leaves at
+				 * their reset (or boot-stage leftover) state.
+				 */
+				writel(0xc0, priv->mmio + RK3568_PHYREG30);
+				writel(0x90, priv->mmio + RK3568_PHYREG11);
+				writel(0x43, priv->mmio + RK3568_PHYREG12);
+				writel(0x88, priv->mmio + RK3568_PHYREG13);
+				writel(0x56, priv->mmio + RK3568_PHYREG14);
+			} else {
+				/* Enable controlling random jitter. */
+				writel(RK3568_PHYREG12_PLL_LPF_ADJ_VALUE,
+				       priv->mmio + RK3568_PHYREG12);
+
+				/* Set up su_trim:  */
+				writel(RK3568_PHYREG11_SU_TRIM_0_7,
+				       priv->mmio + RK3568_PHYREG11);
+			}
 		}
 		break;
 	default:

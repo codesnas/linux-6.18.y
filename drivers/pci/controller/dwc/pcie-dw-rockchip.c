@@ -103,6 +103,16 @@
 
 #define PCIE_TYPE0_HDR_DBI2_OFFSET      0x100000
 
+/*
+ * Optional link training robustness (see rockchip,enumeration-retries):
+ * how long to poll for link up per attempt after releasing PERST, and how
+ * long to hold the endpoint in reset before retraining. Values follow the
+ * vendor BSP driver, which recovers endpoints stuck in broken LTSSM states
+ * (e.g. Polling.Compliance) by retraining after a long settle delay.
+ */
+#define RK_PCIE_RETRY_LINK_WAIT_MS	2000
+#define RK_PCIE_RETRY_SETTLE_MS		1000
+
 struct rockchip_pcie {
 	struct dw_pcie pci;
 	void __iomem *apb_base;
@@ -114,6 +124,8 @@ struct rockchip_pcie {
 	struct irq_domain *irq_domain;
 	const struct rockchip_pcie_of_data *data;
 	bool supports_clkreq;
+	u32 perst_inactive_ms;
+	u32 enumeration_retries;
 	struct delayed_work trace_work;
 };
 
@@ -382,26 +394,75 @@ static void rockchip_pcie_enable_l0s(struct dw_pcie *pci)
 static int rockchip_pcie_start_link(struct dw_pcie *pci)
 {
 	struct rockchip_pcie *rockchip = to_rockchip_pcie(pci);
+	u32 state = 0;
+	int attempt, wait;
 
-	/* Reset device */
-	gpiod_set_value_cansleep(rockchip->rst_gpio, 0);
+	for (attempt = 0; attempt <= rockchip->enumeration_retries; attempt++) {
+		if (attempt) {
+			/*
+			 * The endpoint passed receiver detection but the
+			 * previous training failed: it may be stuck in an
+			 * irrecoverable LTSSM state (e.g. Polling.Compliance,
+			 * possibly inherited from a boot stage that trained
+			 * the link with different PHY settings), or its
+			 * firmware was not ready in time. Restart LTSSM and
+			 * hold the endpoint in reset for a long while, so the
+			 * next attempt starts from a clean slate.
+			 */
+			dev_info(pci->dev,
+				 "link training failed in LTSSM state 0x%02x, retraining (attempt %d/%u)\n",
+				 state, attempt + 1, rockchip->enumeration_retries + 1);
+			rockchip_pcie_disable_ltssm(rockchip);
+			msleep(RK_PCIE_RETRY_SETTLE_MS);
+		}
 
-	rockchip_pcie_enable_ltssm(rockchip);
+		/* Reset device */
+		gpiod_set_value_cansleep(rockchip->rst_gpio, 0);
 
-	/*
-	 * PCIe requires the refclk to be stable for 100µs prior to releasing
-	 * PERST. See table 2-4 in section 2.6.2 AC Specifications of the PCI
-	 * Express Card Electromechanical Specification, 1.1. However, we don't
-	 * know if the refclk is coming from RC's PHY or external OSC. If it's
-	 * from RC, so enabling LTSSM is the just right place to release #PERST.
-	 * We need more extra time as before, rather than setting just
-	 * 100us as we don't know how long should the device need to reset.
-	 */
-	msleep(PCIE_T_PVPERL_MS);
+		rockchip_pcie_enable_ltssm(rockchip);
 
-	rockchip_pcie_ltssm_trace(rockchip, true);
+		/*
+		 * PCIe requires the refclk to be stable for 100µs prior to releasing
+		 * PERST. See table 2-4 in section 2.6.2 AC Specifications of the PCI
+		 * Express Card Electromechanical Specification, 1.1. However, we don't
+		 * know if the refclk is coming from RC's PHY or external OSC. If it's
+		 * from RC, so enabling LTSSM is the just right place to release #PERST.
+		 * We need more extra time as before, rather than setting just
+		 * 100us as we don't know how long should the device need to reset.
+		 * Boards may extend the wait via rockchip,perst-inactive-ms.
+		 */
+		msleep(rockchip->perst_inactive_ms);
 
-	gpiod_set_value_cansleep(rockchip->rst_gpio, 1);
+		rockchip_pcie_ltssm_trace(rockchip, true);
+
+		gpiod_set_value_cansleep(rockchip->rst_gpio, 1);
+
+		if (!rockchip->enumeration_retries)
+			break;
+
+		/*
+		 * Poll for link up here, so that a slow-to-initialize
+		 * endpoint is given much longer than the DWC core's own
+		 * (shorter) wait that runs after this callback returns.
+		 * Once up, wait a bit and double check, as the Gen switch
+		 * may briefly drop the link right after L0 in Gen1.
+		 */
+		for (wait = 0; wait < RK_PCIE_RETRY_LINK_WAIT_MS / 20; wait++) {
+			if (rockchip_pcie_link_up(pci)) {
+				msleep(50);
+				if (rockchip_pcie_link_up(pci))
+					return 0;
+			}
+			msleep(20);
+		}
+
+		state = FIELD_GET(PCIE_LTSSM_STATUS_MASK,
+				  rockchip_pcie_readl_apb(rockchip, PCIE_CLIENT_LTSSM_STATUS));
+
+		/* No receiver detected: retrying won't conjure a device. */
+		if (state < DW_PCIE_LTSSM_POLL_ACTIVE)
+			break;
+	}
 
 	return 0;
 }
@@ -596,6 +657,15 @@ static int rockchip_pcie_resource_get(struct platform_device *pdev,
 
 	rockchip->supports_clkreq = of_property_read_bool(pdev->dev.of_node,
 							  "supports-clkreq");
+
+	/* Default matches the PCIe CEM spec minimum (T_PVPERL). */
+	if (of_property_read_u32(pdev->dev.of_node, "rockchip,perst-inactive-ms",
+				 &rockchip->perst_inactive_ms))
+		rockchip->perst_inactive_ms = PCIE_T_PVPERL_MS;
+
+	/* Opt-in: default 0 keeps the legacy single-attempt flow. */
+	of_property_read_u32(pdev->dev.of_node, "rockchip,enumeration-retries",
+			     &rockchip->enumeration_retries);
 
 	return 0;
 }

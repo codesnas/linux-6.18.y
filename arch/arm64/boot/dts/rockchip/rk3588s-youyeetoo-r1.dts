@@ -190,10 +190,12 @@
 };
 
 &combphy0_ps {
+	rockchip,pcie-vendor-trim;
 	status = "okay";
 };
 
 &combphy2_psu {
+	rockchip,pcie-vendor-trim;
 	status = "okay";
 };
 
@@ -438,12 +440,16 @@
 &pcie2x1l1 {
 	reset-gpios = <&gpio1 RK_PA7 GPIO_ACTIVE_HIGH>;
 	rockchip,init-delay-ms = <100>;
+	rockchip,perst-inactive-ms = <200>;
+	rockchip,enumeration-retries = <2>;
 	vpcie3v3-supply = <&vcc_3v3_pcie20>;
 	status = "okay";
 };
 
 &pcie2x1l2 {
 	reset-gpios = <&gpio3 RK_PD1 GPIO_ACTIVE_HIGH>;
+	rockchip,perst-inactive-ms = <200>;
+	rockchip,enumeration-retries = <2>;
 	vpcie3v3-supply = <&vcc_3v3_pcie20>;
 	status = "okay";
 };
