@@ -437,6 +437,11 @@ static int rockchip_pcie_start_link(struct dw_pcie *pci)
 
 		gpiod_set_value_cansleep(rockchip->rst_gpio, 1);
 
+		/* DEBUG: confirm PERST is really deasserted on the GPIO stack */
+		dev_info(pci->dev, "DEBUG: PERST gpio%d value after release = %d\n",
+			 desc_to_gpio(rockchip->rst_gpio),
+			 gpiod_get_value_cansleep(rockchip->rst_gpio));
+
 		if (!rockchip->enumeration_retries)
 			break;
 

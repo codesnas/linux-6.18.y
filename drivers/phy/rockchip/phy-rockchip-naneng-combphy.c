@@ -288,6 +288,21 @@ static int rockchip_combphy_init(struct phy *phy)
 	if (ret)
 		goto err_clk;
 
+	/* DEBUG: dump effective post-reset PCIe trim state on rk3588 */
+	if (priv->type == PHY_TYPE_PCIE &&
+	    of_device_is_compatible(priv->dev->of_node,
+				    "rockchip,rk3588-naneng-combphy"))
+		dev_info(priv->dev,
+			 "DEBUG: post-reset regs: 0x28=%02x 0x2c=%02x 0x30=%02x 0x34=%02x 0x6c=%02x 0x74=%02x 0x7c=%02x 0x80=%02x\n",
+			 (u8)readl(priv->mmio + 0x28),
+			 (u8)readl(priv->mmio + 0x2c),
+			 (u8)readl(priv->mmio + 0x30),
+			 (u8)readl(priv->mmio + 0x34),
+			 (u8)readl(priv->mmio + 0x6c),
+			 (u8)readl(priv->mmio + 0x74),
+			 (u8)readl(priv->mmio + 0x7c),
+			 (u8)readl(priv->mmio + 0x80));
+
 	if (priv->type == PHY_TYPE_USB3) {
 		ret = readx_poll_timeout_atomic(rockchip_combphy_is_ready,
 						priv, val,
