@@ -251,6 +251,19 @@ static u32 rockchip_combphy_is_ready(struct rockchip_combphy_priv *priv)
 	return val;
 }
 
+/* DEBUG: dump the rk3588 PCIe trim window registers with a tag */
+static void rk3588_combphy_debug_dump(struct rockchip_combphy_priv *priv,
+				      const char *tag)
+{
+	dev_info(priv->dev,
+		 "DEBUG: %s regs: 0x28=%02x 0x2c=%02x 0x30=%02x 0x34=%02x 0x6c=%02x 0x74=%02x 0x7c=%02x 0x80=%02x\n",
+		 tag,
+		 (u8)readl(priv->mmio + 0x28), (u8)readl(priv->mmio + 0x2c),
+		 (u8)readl(priv->mmio + 0x30), (u8)readl(priv->mmio + 0x34),
+		 (u8)readl(priv->mmio + 0x6c), (u8)readl(priv->mmio + 0x74),
+		 (u8)readl(priv->mmio + 0x7c), (u8)readl(priv->mmio + 0x80));
+}
+
 static int rockchip_combphy_init(struct phy *phy)
 {
 	struct rockchip_combphy_priv *priv = phy_get_drvdata(phy);
@@ -284,6 +297,12 @@ static int rockchip_combphy_init(struct phy *phy)
 		goto err_clk;
 	}
 
+	/* DEBUG: dump trim regs before the PHY reset is released */
+	if (priv->type == PHY_TYPE_PCIE &&
+	    of_device_is_compatible(priv->dev->of_node,
+				    "rockchip,rk3588-naneng-combphy"))
+		rk3588_combphy_debug_dump(priv, "pre-reset ");
+
 	ret = reset_control_deassert(priv->phy_rst);
 	if (ret)
 		goto err_clk;
@@ -291,17 +310,26 @@ static int rockchip_combphy_init(struct phy *phy)
 	/* DEBUG: dump effective post-reset PCIe trim state on rk3588 */
 	if (priv->type == PHY_TYPE_PCIE &&
 	    of_device_is_compatible(priv->dev->of_node,
-				    "rockchip,rk3588-naneng-combphy"))
-		dev_info(priv->dev,
-			 "DEBUG: post-reset regs: 0x28=%02x 0x2c=%02x 0x30=%02x 0x34=%02x 0x6c=%02x 0x74=%02x 0x7c=%02x 0x80=%02x\n",
-			 (u8)readl(priv->mmio + 0x28),
-			 (u8)readl(priv->mmio + 0x2c),
-			 (u8)readl(priv->mmio + 0x30),
-			 (u8)readl(priv->mmio + 0x34),
-			 (u8)readl(priv->mmio + 0x6c),
-			 (u8)readl(priv->mmio + 0x74),
-			 (u8)readl(priv->mmio + 0x7c),
-			 (u8)readl(priv->mmio + 0x80));
+				    "rockchip,rk3588-naneng-combphy")) {
+		rk3588_combphy_debug_dump(priv, "post-reset");
+
+		/*
+		 * DEBUG: if trim writes only stick after the PHY reset is
+		 * released, re-applying them here makes them effective;
+		 * the readback shows whether the registers accept writes
+		 * at all in this state.
+		 */
+		if (priv->pcie_vendor_trim) {
+			writel(0xc0, priv->mmio + RK3568_PHYREG30);
+			writel(0x90, priv->mmio + RK3568_PHYREG11);
+			writel(0x43, priv->mmio + RK3568_PHYREG12);
+			writel(0x88, priv->mmio + RK3568_PHYREG13);
+			writel(0x56, priv->mmio + RK3568_PHYREG14);
+			writel(RK3588_PHYREG27_RX_TRIM,
+			       priv->mmio + RK3588_PHYREG27);
+			rk3588_combphy_debug_dump(priv, "post-write");
+		}
+	}
 
 	if (priv->type == PHY_TYPE_USB3) {
 		ret = readx_poll_timeout_atomic(rockchip_combphy_is_ready,
