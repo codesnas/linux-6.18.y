@@ -208,6 +208,7 @@ struct rockchip_combphy_priv {
 	struct regmap *phy_grf;
 	struct phy *phy;
 	struct reset_control *phy_rst;
+	struct reset_control *apb_rst;
 	const struct rockchip_combphy_cfg *cfg;
 	bool enable_ssc;
 	bool ext_refclk;
@@ -275,6 +276,16 @@ static int rockchip_combphy_init(struct phy *phy)
 	if (ret) {
 		dev_err(priv->dev, "failed to enable clks\n");
 		return ret;
+	}
+
+	/*
+	 * Release the register-interface reset before touching any PHY
+	 * register; NULL when the platform doesn't describe it.
+	 */
+	ret = reset_control_deassert(priv->apb_rst);
+	if (ret) {
+		dev_err(priv->dev, "failed to deassert apb reset\n");
+		goto err_clk;
 	}
 
 	switch (priv->type) {
@@ -427,6 +438,18 @@ static int rockchip_combphy_parse_dt(struct device *dev, struct rockchip_combphy
 		priv->phy_rst = devm_reset_control_array_get_exclusive(dev);
 	if (IS_ERR(priv->phy_rst))
 		return dev_err_probe(dev, PTR_ERR(priv->phy_rst), "failed to get phy reset\n");
+
+	/*
+	 * The "apb" reset gates the PHY's internal register interface. Some
+	 * boards' firmware never releases it (e.g. Youyeetoo R1), which makes
+	 * every PHY register access return zero and silently drops all
+	 * configuration writes, so PCIe link training can never succeed.
+	 * Request it optionally: on platforms whose firmware already releases
+	 * it the extra deassert is a harmless no-op.
+	 */
+	priv->apb_rst = devm_reset_control_get_optional_exclusive(dev, "apb");
+	if (IS_ERR(priv->apb_rst))
+		return dev_err_probe(dev, PTR_ERR(priv->apb_rst), "failed to get apb reset\n");
 
 	return 0;
 }
