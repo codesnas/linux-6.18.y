@@ -287,11 +287,19 @@ static void dw_mci_rk3288_set_ios(struct dw_mci *host, struct mmc_ios *ios)
 		}
 
 		/* Use out phase from phase map first */
-static int dw_mci_v2_execute_tuning(struct dw_mci_slot *slot, u32 opcode)
+		if (phase.valid)
+			drv_phase = phase.out_deg;
+		rockchip_mmc_set_phase(host, false, drv_phase);
+	}
+}
+
+#define TUNING_ITERATION_TO_PHASE(i, num_phases) \
+		(DIV_ROUND_UP((i) * 360, num_phases))
+
+static int dw_mci_v2_execute_tuning(struct dw_mci *host, u32 opcode)
 {
-	struct dw_mci *host = slot->host;
 	struct dw_mci_rockchip_priv_data *priv = host->priv;
-	struct mmc_host *mmc = slot->mmc;
+	struct mmc_host *mmc = host->mmc;
 	u32 degrees[4] = { 0, 90, 180, 270 }, degree;
 	int i;
 	static bool inherit = true;
@@ -341,15 +349,6 @@ done:
 	return 0;
 }
 
-		if (phase.valid)
-			drv_phase = phase.out_deg;
-		rockchip_mmc_set_phase(host, false, drv_phase);
-	}
-}
-
-#define TUNING_ITERATION_TO_PHASE(i, num_phases) \
-		(DIV_ROUND_UP((i) * 360, num_phases))
-
 static int dw_mci_rk3288_execute_tuning(struct dw_mci *host, u32 opcode)
 {
 	struct dw_mci_rockchip_priv_data *priv = host->priv;
@@ -374,7 +373,7 @@ static int dw_mci_rk3288_execute_tuning(struct dw_mci *host, u32 opcode)
 	}
 
 	if (priv->use_v2_tuning) {
-		if (!dw_mci_v2_execute_tuning(slot, opcode))
+		if (!dw_mci_v2_execute_tuning(host, opcode))
 			return 0;
 		/* Otherwise we continue using fine tuning */
 	}
