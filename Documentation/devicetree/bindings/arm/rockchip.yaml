@@ -181,6 +181,11 @@ properties:
               - alientek,dlrv1126
           - const: alientek,clrv1126f
           - const: rockchip,rv1126
+      - description: Alientek QuarkPi-CA2 board
+        items:
+          - const: alientek,quarkpi-ca2
+          - const: rockchip,rk3588s
+
 
       - description: Edgeble Neural Compute Module 2(Neu2) SoM based boards
         items:
