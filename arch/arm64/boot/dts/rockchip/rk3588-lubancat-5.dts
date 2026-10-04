@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
- * Copyright (c) 2026 Zijing AI <zixiai@users.noreply.github.com>
+ * Copyright (c) 2021 Rockchip Electronics Co., Ltd.
+ * Copyright (c) 2023 EmbedFire <embedfire@embedfire.com>
  * Copyright (c) 2025 Cunhao Lu <1579567540@qq.com>
+ * Copyright (c) 2026 zixiai <78121660+zixiai@users.noreply.github.com>
  *
- * Board wiring is based on EmbedFire's LubanCat 5 BSP device tree and uses
- * upstream Linux device-tree bindings.
+ * Board wiring is based on EmbedFire's LubanCat 5 BSP device tree and
+ * the upstream LubanCat 5 BTB device-tree description.
  */
 
 /dts-v1/;
